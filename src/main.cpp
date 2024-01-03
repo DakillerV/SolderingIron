@@ -11,12 +11,12 @@
 #define button3Pin 13
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
+unsigned long startTime = 0;
 volatile int button8State = HIGH;
 volatile int button2State = HIGH;
 volatile int button3State = HIGH;
 const int buttonReleased = HIGH;
 const int buttonPressed = LOW;
-
 int
 	minTemp = 27,  // Minimum aquired iron tip temp during testing (°C)
 	maxTemp = 525, // Maximum aquired iron tip temp during testing (°C)
@@ -27,11 +27,17 @@ int
 	avgCounts = 5,	  // Number of avg samples
 	lcdInterval = 80, // LCD refresh rate (miliseconds)
 	pwm = 0,		  // System Variable
+	tempRAW = 0,	  // System Variable
+	setTemp = 0,	  // System Variable
+	setTempAVG = 0,	  // System Variable
 	previewTemp = 0,
 	counter = 0,		// System Variable
 	previousMillis = 0; // System Variable
-
-#define OLED_RESET -1 // Reset pin # (or -1 if sharing Arduino reset pin)
+float
+	currentTemp = 0.0, // System Variable
+	store = 0.0,	   // System Variable
+	knobStore = 0.0;   // System Variable
+#define OLED_RESET -1  // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 void setup()
@@ -49,14 +55,16 @@ void setup()
 	pinMode(button2Pin, INPUT);
 	pinMode(button3Pin, INPUT);
 	pinMode(iron, OUTPUT); // Set MOSFET PWM pin as OUTPUT
-	pinMode(A5, INPUT);	   // Passthru Pin
+	pinMode(A6, INPUT);	   // Passthru Pin
 	display.clearDisplay();
 
 	display.setTextSize(1);
 	display.setTextColor(SSD1306_WHITE); //
 	display.setCursor((SCREEN_WIDTH - 90) / 2, (SCREEN_HEIGHT) / 2);
 	display.cp437(true);
-	display.println("Soldering Iron");
+	display.write("Soldering Iron");
+	display.setCursor((SCREEN_WIDTH - 90) / 2, ((SCREEN_HEIGHT) / 2) + 10);
+	display.println("FW:0.1");
 
 	display.display();
 	delay(1000);
@@ -65,6 +73,9 @@ void setup()
 }
 void loop()
 {
+	tempRAW = analogRead(tempSensor);											 // Get analog value of temp sensor
+	currentTemp = map(analogRead(tempSensor), minADC, maxADC, minTemp, maxTemp); // Sacle raw analog temp values as actual temp units
+
 	button8State = digitalRead(button8Pin);
 	button2State = digitalRead(button2Pin);
 	button3State = digitalRead(button3Pin);
@@ -77,7 +88,6 @@ void loop()
 	{
 		setPower = maxPWM;
 	}
-
 	if (button2State == 1 && setPower >= 0)
 	{
 		Serial.println("Down");
@@ -88,11 +98,17 @@ void loop()
 		setPower = 0;
 	}
 
-	if (button3State)
-	{
-		pwm = setPower;
+	if (currentTemp <= setPower)
+	{ // Turn on iron when iron temp is lower than preset temp
+		pwm = maxPWM;
+		startTime = millis();
 	}
-	else if (!button3State)
+	else
+	{
+		pwm = 0;
+	}
+
+	if (button3State)
 	{
 		pwm = 0;
 	}
@@ -103,14 +119,16 @@ void loop()
 	{ // LCD will only display new data ever n milisec intervals
 		previousMillis = currentMillis;
 		display.clearDisplay();
-		String firingInfo = "Firing!\n  Time held:" + String(5);
-		String sysInfo = "Ohms: 0.3, Hits: 0 \n   Power: " + String(setPower);
+		String sysInfo = "Profile: LED \n   Power: " + String(setPower);
 		display.setCursor(10, 1);
-		display.println("Soldering OS: 0.1");
+		display.write("Soldering OS: 0.1");
 		display.setCursor(10, 15);
 		display.println(sysInfo);
-		if (button3State)
+		if (currentTemp <= setPower)
 		{
+			unsigned long currentTime = millis();
+			unsigned long elapsedTime = currentTime - startTime;
+			String firingInfo = "Heating!\n  Time:" + String(elapsedTime);
 			display.setCursor(10, 40);
 			display.println(firingInfo);
 		}
