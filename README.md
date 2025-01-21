@@ -1,3 +1,3 @@
 First C Arduino Project
 
-Creds: Me + ChatGPT
+Creds: Me + ChatGPT + Youtube: TechBuilder
